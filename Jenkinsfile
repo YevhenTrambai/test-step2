@@ -2,36 +2,36 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_CREDENTIALS = credentials('DOCKER_HUB_CREDENTIALS')
+        GIT_CREDENTIALS = credentials('GIT_SSH_KEY')
+        DOCKERHUB_CREDENTIALS = credentials('DOCKERHUB_CRED')
     }
 
     stages {
         stage('Pull Code') {
             steps {
-                git 'https://github.com/YevhenTrambai/test-step2.git'
+                git url: 'git@github.com:YevhenTrambai/test-step2.git', credentialsId: 'GIT_SSH_KEY'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
             }
         }
 
         stage('Build Docker Image') {
-            agent {
-                label 'jenkins-worker'
-            }
             steps {
                 script {
-                    docker.build('test-image-step2')
+                    docker.build('step2-test')
                 }
             }
         }
 
         stage('Run Tests') {
-            agent {
-                label 'jenkins-worker'
-            }
             steps {
                 script {
-                    def app = docker.image('test-image-step2')
+                    def app = docker.image('step2-test')
                     app.inside {
-                        sh 'npm install'
                         sh 'npm test'
                     }
                 }
@@ -46,8 +46,8 @@ pipeline {
             }
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'DOCKER_HUB_CREDENTIALS') {
-                        docker.image('test-image-step2').push('latest')
+                    docker.withRegistry('https://index.docker.io/v1/', 'DOCKERHUB_CREDENTIALS') {
+                        docker.image('step2-test').push('latest')
                     }
                 }
             }

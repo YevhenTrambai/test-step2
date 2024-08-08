@@ -3,13 +3,13 @@ pipeline {
 
     environment {
         GIT_CREDENTIALS = credentials('GIT_SSH_KEY')
-        DOCKERHUB_CREDENTIALS = credentials('DOCKERHUB_CRED')
+        DOCKERHUB_TOKEN = credentials('docker_hub_token')
     }
 
     stages {
         stage('Pull Code') {
             steps {
-                git url: 'git@github.com:YevhenTrambai/test-step2.git', credentialsId: 'GIT_SSH_KEY'
+                git branch: 'main', url: 'git@github.com:YevhenTrambai/test-step2.git', credentialsId: 'GIT_SSH_KEY'
             }
         }
 
@@ -46,7 +46,7 @@ pipeline {
             }
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'DOCKERHUB_CREDENTIALS') {
+                    docker.withRegistry('https://index.docker.io/v1/', 'DOCKERHUB_TOKEN') {
                         docker.image('step2-test').push('latest')
                     }
                 }

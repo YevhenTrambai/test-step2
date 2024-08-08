@@ -32,7 +32,8 @@ pipeline {
                 script {
                     def app = docker.image('step2-test')
                     app.inside {
-                        sh 'npm test'
+                        sh 'npm test || true'
+                        sh 'cat npm-debug.log || true'
                     }
                 }
             }

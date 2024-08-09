@@ -1,11 +1,10 @@
 pipeline {
     agent any
 
-   
     stages {
         stage('Pull Code') {
             steps {
-                git branch: 'main', url: 'git@github.com:YevhenTrambai/test-step2.git', credentialsId: 'GIT_SSH_KEY'
+                checkout([$class: 'GitSCM', branches: [[name: 'main']], userRemoteConfigs: [[url: 'git@github.com:YevhenTrambai/test-step2.git', credentialsId: 'GIT_SSH_KEY']]])
             }
         }
 
@@ -18,7 +17,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build('step2-test')
+                    docker.build('your-dockerhub-username/step2-test')
                 }
             }
         }
@@ -26,7 +25,7 @@ pipeline {
         stage('Run Docker Container') {
             steps {
                 script {
-                    def app = docker.image('step2-test')
+                    def app = docker.image('your-dockerhub-username/step2-test')
                     app.inside('--entrypoint="" -v /home/vagrant/opt/jenkins/workspace/Step2-test-pipeline:/app -w /app') {
                         sh 'npm test'
                     }
@@ -42,8 +41,10 @@ pipeline {
             }
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker_hub_token') {
-                        docker.image('step2-test').push('latest')
+                    withCredentials([string(credentialsId: 'docker_hub_token', variable: 'DOCKER_HUB_TOKEN')]) {
+                        docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_TOKEN) {
+                            docker.image('yevhent/step2-test').push('latest')
+                        }
                     }
                 }
             }

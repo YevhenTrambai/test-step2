@@ -46,7 +46,7 @@ pipeline {
             }
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'DOCKERHUB_TOKEN') {
+                    docker.withRegistry('https://index.docker.io/v1/', 'DOCKERHUB_CRED') {
                         docker.image('step2-test').push('latest')
                     }
                 }

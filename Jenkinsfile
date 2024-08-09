@@ -17,7 +17,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build('your-dockerhub-username/step2-test')
+                    docker.build('yevhent/test-step2/step2-test')
                 }
             }
         }
@@ -25,7 +25,7 @@ pipeline {
         stage('Run Docker Container') {
             steps {
                 script {
-                    def app = docker.image('your-dockerhub-username/step2-test')
+                    def app = docker.image('yevhent/test-step2/step2-test')
                     app.inside('--entrypoint="" -v /home/vagrant/opt/jenkins/workspace/Step2-test-pipeline:/app -w /app') {
                         sh 'npm test'
                     }
@@ -43,7 +43,7 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'docker_hub_token', variable: 'DOCKER_HUB_TOKEN')]) {
                         docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_TOKEN) {
-                            docker.image('yevhent/step2-test').push('latest')
+                            docker.image('yevhent/test-step2/step2-test').push('latest')
                         }
                     }
                 }

@@ -1,11 +1,7 @@
 pipeline {
     agent any
 
-    environment {
-        GIT_CREDENTIALS = credentials('GIT_SSH_KEY')
-        DOCKERHUB_TOKEN = credentials('DOCKERHUB_CRED')
-    }
-
+   
     stages {
         stage('Pull Code') {
             steps {
@@ -46,7 +42,7 @@ pipeline {
             }
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'DOCKERHUB_CRED') {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker_hub_token') {
                         docker.image('step2-test').push('latest')
                     }
                 }

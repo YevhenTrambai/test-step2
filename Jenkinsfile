@@ -31,7 +31,7 @@ pipeline {
             steps {
                 script {
                     def app = docker.image('step2-test')
-                    app.inside('-v /home/vagrant/opt/jenkins/workspace/Step2-test-pipeline:/app -w /app') {
+                    app.inside('--entrypoint="" -v /home/vagrant/opt/jenkins/workspace/Step2-test-pipeline:/app -w /app') {
                         sh 'npm test'
                     }
                 }

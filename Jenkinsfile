@@ -41,7 +41,7 @@ pipeline {
             }
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'docker_hub_token', variable: 'DOCKER_HUB_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'DOCKERHUB_CRED', variable: 'DOCKER_HUB_TOKEN')]) {
                         docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_TOKEN) {
                             docker.image('yevhent/test-step2/step2-test').push('latest')
                         }

@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         GIT_CREDENTIALS = credentials('GIT_SSH_KEY')
-        DOCKERHUB_TOKEN = credentials('docker_hub_token')
+        DOCKERHUB_TOKEN = credentials('DOCKERHUB_CRED')
     }
 
     stages {

@@ -15,6 +15,7 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh 'npm install'
+                sh 'docker tag yevhent/test-step2/step2-test index.docker.io/yevhent/test-step2/step2-test:latest'
             }
         }
 

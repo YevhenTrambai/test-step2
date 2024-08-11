@@ -45,17 +45,21 @@ pipeline {
             }
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'DOCKERHUB_CRED') {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker_cred') {
                         docker.image('step2-test').push('latest')
-                        }
                     }
                 }
             }
         }
+    }
 
     post {
+        success {
+            echo 'Build and tests succeeded'
+        }
         failure {
             echo 'Tests failed'
         }
     }
 }
+

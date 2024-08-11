@@ -42,7 +42,7 @@ pipeline {
             }
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker_cred') {
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub_cred') {
                         docker.image('yevhent/test-step2/step2-test').push('latest')
                     }
                 }

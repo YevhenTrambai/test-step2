@@ -18,7 +18,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build('step_proj_container')
+                    docker.build('yevhent/test_step2/step_proj_container')
                 }
             }
         }
@@ -26,7 +26,7 @@ pipeline {
         stage('Run Docker Container') {
             steps {
                 script {
-                    def app = docker.image('step_proj_container')
+                    def app = docker.image('yevhent/test_step2/step_proj_container')
                     app.inside('--entrypoint="" -v /home/vagrant/opt/jenkins/workspace/Step2-test-pipeline:/app -w /app') {
                         sh 'npm test'
                     }

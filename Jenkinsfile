@@ -43,7 +43,8 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker_log_pass') {
-                        docker.image('yevhent/test-step2/step_proj_container').push('latest')
+                        def customImage = docker.image('yevhent/test-step2/step_proj_container')
+                        customImage.push('latest')
                     }
                 }
             }

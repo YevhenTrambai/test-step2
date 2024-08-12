@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'jenkinsworker' }
+    agent { label 'jenkins_worker' }
 
     stages {
         stage('Pull Code') {

@@ -18,7 +18,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build('yevhent/test_step2')
+                    docker.build('yevhent/test_step3')
                 }
             }
         }
@@ -27,7 +27,7 @@ pipeline {
             steps {
                 script {
                     def app = docker.image('yevhent/test_step2')
-                    app.inside('--entrypoint="" -v /home/vagrant/opt/jenkins/workspace/Step2-test-pipeline:/app -w /app') {
+                    app.inside('--entrypoint="" -v /home/ubuntu/jenkins/workspace/Step3-test-pipeline:/app -w /app') {
                         sh 'npm test'
                     }
                 }
@@ -43,7 +43,7 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker_log_pass') {
-                        def customImage = docker.image('yevhent/test_step2')
+                        def customImage = docker.image('yevhent/test_step3')
                         customImage.push('latest')
                     }
                 }

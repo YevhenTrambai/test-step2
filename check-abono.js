@@ -181,30 +181,88 @@ async function checkAvailability(page) {
     log('Не удалось сохранить артефакты:', e.message);
   }
 
-  const bodyText = (await page.locator('body').innerText()).toLowerCase();
-
-  // Диагностика страницы абонементов в лог (для настройки детекции).
   log('ABONO URL:', page.url());
   log('ABONO TITLE:', await page.title());
-  log('ABONO BODY (2000):', bodyText.replace(/\s+/g, ' ').slice(0, 2000));
-  const links = await page.$$eval('a', (els) =>
-    els.map((e) => (e.innerText || '').trim()).filter(Boolean).slice(0, 40)
-  ).catch(() => []);
-  log('ABONO LINKS:', JSON.stringify(links));
 
+  // 1) Диагностика всех <select> — ищем фильтр паркинга с опцией «Torrent».
+  const selectsInfo = await page.$$eval('select', (els) =>
+    els.map((s) => ({
+      id: s.id, name: s.name,
+      options: Array.from(s.options).map((o) => o.textContent.trim()).slice(0, 200),
+    }))
+  ).catch(() => []);
+  for (const s of selectsInfo) {
+    const hasTorrent = s.options.some((t) => /torrent/i.test(t));
+    log(`SELECT id="${s.id}" name="${s.name}" опций=${s.options.length} torrent=${hasTorrent}`);
+    if (hasTorrent) {
+      const opt = s.options.find((t) => /torrent/i.test(t));
+      log('  опция Torrent:', JSON.stringify(opt));
+    }
+  }
+
+  // 2) Пытаемся отфильтровать список по Торренту.
+  let filtered = false;
+  try {
+    const torrentSelect = selectsInfo.find((s) =>
+      s.options.some((t) => new RegExp(PARKING_MATCH, 'i').test(t)));
+    if (torrentSelect) {
+      const sel = torrentSelect.id ? `#${torrentSelect.id}`
+        : `select[name="${torrentSelect.name}"]`;
+      const label = torrentSelect.options.find((t) => new RegExp(PARKING_MATCH, 'i').test(t));
+      await page.selectOption(sel, { label });
+      const applyBtn = page.locator(
+        'button:has-text("Aplicar"), input[type=submit][value*="plicar" i], a:has-text("Aplicar")'
+      ).first();
+      if (await applyBtn.count().catch(() => 0)) {
+        await Promise.all([
+          page.waitForLoadState('networkidle').catch(() => {}),
+          applyBtn.click().catch(() => {}),
+        ]);
+      }
+      await page.waitForTimeout(2000);
+      filtered = true;
+      log('Фильтр по Торренту применён.');
+    } else {
+      log('Не найден select с опцией Torrent — фильтрация пропущена.');
+    }
+  } catch (e) {
+    log('Ошибка фильтрации по Торренту:', e.message);
+  }
+
+  // Сохраняем артефакт отфильтрованного вида.
+  try {
+    fs.writeFileSync('artifacts/abono-torrent.html', await page.content());
+    await page.screenshot({ path: 'artifacts/abono-torrent.png', fullPage: true });
+  } catch (e) { log('Не удалось сохранить артефакт фильтра:', e.message); }
+
+  // 3) Дамп строк-продуктов отфильтрованного вида: текст + кнопки/ссылки.
+  const rows = await page.$$eval(
+    '.card, .panel, [class*="abono" i], [class*="product" i], tr, li',
+    (els) => els
+      .map((e) => ({
+        t: (e.innerText || '').replace(/\s+/g, ' ').trim(),
+        btns: Array.from(e.querySelectorAll('a,button,input[type=submit]'))
+          .map((b) => (b.innerText || b.value || '').trim()).filter(Boolean),
+      }))
+      .filter((r) => r.t && /24|abono|agotado|contratar|comprar|disponib/i.test(r.t))
+      .slice(0, 30)
+  ).catch(() => []);
+  log('TORRENT ROWS:', JSON.stringify(rows));
+
+  const bodyText = (await page.locator('body').innerText()).toLowerCase();
+  log('ABONO BODY (2500):', bodyText.replace(/\s+/g, ' ').slice(0, 2500));
+
+  // 4) Детекция (эвристика, привязанная к отфильтрованному виду Торрента).
   const mentionsParking = bodyText.includes(PARKING_MATCH);
   const mentionsAbono = bodyText.includes(ABONO_MATCH);
-
-  // Признаки «нет доступного абонемента» (sold out / лист ожидания / нет продуктов).
   const soldOutSignals = [
     'no hay', 'agotado', 'sin disponibilidad', 'no disponible',
     'lista de espera', 'completo', 'no existen', 'no se han encontrado',
   ];
   const looksSoldOut = soldOutSignals.some((s) => bodyText.includes(s));
+  const available = filtered && mentionsParking && mentionsAbono && !looksSoldOut;
 
-  const available = mentionsParking && mentionsAbono && !looksSoldOut;
-
-  const detail = `parking("${PARKING_MATCH}")=${mentionsParking}, ` +
+  const detail = `filtered=${filtered}, parking("${PARKING_MATCH}")=${mentionsParking}, ` +
     `abono("${ABONO_MATCH}")=${mentionsAbono}, soldOut=${looksSoldOut}`;
   log('Результат детекции:', detail);
   return { available, detail };

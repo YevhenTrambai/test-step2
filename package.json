@@ -9,7 +9,6 @@
     "probe": "node scripts/probe.js"
   },
   "dependencies": {
-    "nodemailer": "^6.9.14",
     "playwright": "^1.48.0"
   }
 }

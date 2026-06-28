@@ -4,7 +4,12 @@ on:
   schedule:
     # Каждые 15 минут. GitHub может задерживать запуск при высокой нагрузке.
     - cron: "*/15 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      test_push:
+        description: "Отправить тестовый пуш и выйти (проверка ntfy)"
+        type: boolean
+        default: false
 
 # Чтобы параллельные запуски не топтались по состоянию.
 concurrency:
@@ -43,14 +48,11 @@ jobs:
         env:
           IPK_USER: ${{ secrets.IPK_USER }}
           IPK_PASS: ${{ secrets.IPK_PASS }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER: ${{ vars.NTFY_SERVER }}
+          TEST_PUSH: ${{ inputs.test_push }}
           PARKING_MATCH: ${{ vars.PARKING_MATCH }}
-          ABONO_MATCH: ${{ vars.ABONO_MATCH }}
+          ABONO_PRODUCT_RE: ${{ vars.ABONO_PRODUCT_RE }}
         run: npm run check
 
       - name: Save state

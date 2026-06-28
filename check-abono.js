@@ -5,23 +5,22 @@
  *
  * Логинится в личный кабинет P-web, открывает страницу абонементов и определяет,
  * доступен ли для оформления абонемент 24h в паркинге Торрент. При появлении
- * доступности (переход «недоступен -> доступен») шлёт письмо на email.
+ * доступности (переход «недоступен -> доступен») шлёт пуш на телефон через ntfy.sh.
  *
  * Конфигурация через переменные окружения (см. README.md):
- *   IPK_USER, IPK_PASS                  — учётка InterParking
- *   SMTP_HOST, SMTP_PORT, SMTP_USER,
- *   SMTP_PASS, EMAIL_TO, EMAIL_FROM     — отправка email
- *   STATE_FILE                          — путь к файлу состояния (по умолчанию state.json)
- *   HEADLESS                            — "false" чтобы видеть браузер (локальная отладка)
- *   PARKING_MATCH                       — подстрока названия паркинга (по умолч. "torrent")
- *   ABONO_MATCH                         — подстрока продукта (по умолч. "24")
+ *   IPK_USER, IPK_PASS    — учётка InterParking
+ *   NTFY_TOPIC            — секретная «тема» ntfy для пушей (обязательно для уведомления)
+ *   NTFY_SERVER           — сервер ntfy (по умолчанию https://ntfy.sh)
+ *   STATE_FILE            — путь к файлу состояния (по умолчанию state.json)
+ *   HEADLESS              — "false" чтобы видеть браузер (локальная отладка)
+ *   PARKING_MATCH         — подстрока названия паркинга (по умолч. "torrent")
+ *   ABONO_PRODUCT_RE      — регэксп продукта (по умолч. "abono\\s*24h")
  *
  * Коды выхода: 0 — проверка прошла; 2 — ошибка (логин/навигация).
  */
 
 const fs = require('fs');
 const path = require('path');
-const nodemailer = require('nodemailer');
 const { chromium } = require('playwright');
 
 const BASE = 'https://p-web.interparking.es';
@@ -30,7 +29,6 @@ const ABONO_URL = `${BASE}/Contracts/AbonoList`;
 
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'state.json');
 const PARKING_MATCH = (process.env.PARKING_MATCH || 'torrent').toLowerCase();
-const ABONO_MATCH = (process.env.ABONO_MATCH || '24').toLowerCase();
 const HEADLESS = process.env.HEADLESS !== 'false';
 
 function log(...args) {
@@ -269,39 +267,49 @@ async function checkAvailability(page) {
   return { available, detail };
 }
 
-async function sendEmail(subjectAvailable, detail) {
-  const transporter = nodemailer.createTransport({
-    host: requireEnv('SMTP_HOST'),
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: Number(process.env.SMTP_PORT || 587) === 465,
-    auth: {
-      user: requireEnv('SMTP_USER'),
-      pass: requireEnv('SMTP_PASS'),
+async function sendPush(detail, isTest = false) {
+  // Пуш на телефон через ntfy.sh. Тема (topic) — секретная, задаётся в NTFY_TOPIC.
+  const server = (process.env.NTFY_SERVER || 'https://ntfy.sh').replace(/\/$/, '');
+  const topic = requireEnv('NTFY_TOPIC');
+  const url = `${server}/${topic}`;
+
+  const body = isTest
+    ? `Тестовый пуш от InterParking checker. Связка работает ✅\nДетали: ${detail}`
+    : 'Abono 24h L-D в паркинге Torrent - Avenida País Valencià больше НЕ «Agotado» — ' +
+      'вероятно, доступен для оформления!\n\n' +
+      `Открыть: ${ABONO_URL}\n` +
+      `(фильтр: Torrent - Avenida País Valencià, продукт: Abono 24h L-D)\n\n` +
+      `Детали: ${detail}`;
+
+  // Заголовки ntfy должны быть ASCII, поэтому Title — латиницей, эмодзи — через Tags.
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Title: isTest ? 'ntfy test - InterParking checker' : 'Abono 24h L-D Torrent DISPONIBLE',
+      Priority: isTest ? 'default' : 'urgent',
+      Tags: isTest ? 'gear' : 'white_check_mark,car',
+      Click: ABONO_URL,
     },
+    body,
   });
-
-  const to = requireEnv('EMAIL_TO');
-  const from = process.env.EMAIL_FROM || process.env.SMTP_USER;
-
-  await transporter.sendMail({
-    from,
-    to,
-    subject: subjectAvailable
-      ? '✅ Abono 24h L-D (Торрент) ДОСТУПЕН — оформляй!'
-      : 'ℹ️ Abono 24h L-D (Торрент) — статус проверки',
-    text:
-      (subjectAvailable
-        ? 'Продукт «Abono 24h L-D» в паркинге Torrent - Avenida País Valencià больше НЕ помечен «Agotado» — вероятно, доступен для оформления.\n'
-        : 'Текущий статус ниже.\n') +
-      `\nОформить/проверить: ${ABONO_URL}\n` +
-      `(в фильтре выбери «Torrent - Avenida País Valencià», продукт «Abono 24h L-D»)\n` +
-      `\nДетали детекции: ${detail}\n` +
-      `Время: ${new Date().toISOString()}\n`,
-  });
-  log('Email отправлен на', to);
+  if (!res.ok) {
+    throw new Error(`ntfy ответил ${res.status} ${res.statusText}`);
+  }
+  log(isTest ? 'Тестовый пуш отправлен в ntfy.' : 'Пуш отправлен в ntfy topic.');
 }
 
 (async () => {
+  // Режим тестового пуша: проверить доставку ntfy без логина/проверки сайта.
+  if (process.env.TEST_PUSH === 'true') {
+    try {
+      await sendPush(new Date().toISOString(), true);
+    } catch (err) {
+      console.error('Ошибка тестового пуша:', err.message);
+      process.exitCode = 2;
+    }
+    return;
+  }
+
   const browser = await chromium.launch({
     headless: HEADLESS,
     executablePath: process.env.PW_EXECUTABLE_PATH || undefined,
@@ -320,9 +328,9 @@ async function sendEmail(subjectAvailable, detail) {
     const prev = readState();
     log('Прошлое состояние:', JSON.stringify(prev));
 
-    // Письмо только при переходе «недоступен -> доступен».
+    // Пуш только при переходе «недоступен -> доступен».
     if (available && !prev.available) {
-      await sendEmail(true, detail);
+      await sendPush(detail);
       writeState({ available: true, lastNotifiedAt: new Date().toISOString() });
     } else {
       writeState({ ...prev, available });

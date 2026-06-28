@@ -1,17 +1,17 @@
 # Мониторинг абонемента 24h в InterParking (Торрент)
 
 Автоматически проверяет личный кабинет InterParking
-([P-web](https://p-web.interparking.es/Contracts/AbonoList)) и присылает **email**,
-когда абонемент **24h** в паркинге **Торрент** (Avenida País Valencià) становится
-доступен для оформления.
+([P-web](https://p-web.interparking.es/Contracts/AbonoList)) и присылает **пуш на
+телефон** (через [ntfy.sh](https://ntfy.sh)), когда абонемент **24h** в паркинге
+**Торрент** (Avenida País Valencià) становится доступен для оформления.
 
 ## Как это устроено
 
 - `check-abono.js` — скрипт на [Playwright](https://playwright.dev): логинится твоим
   аккаунтом, открывает страницу абонементов и определяет доступность 24h в Торренте.
-- При переходе «недоступен → доступен» шлёт письмо через SMTP (`nodemailer`).
+- При переходе «недоступен → доступен» шлёт **пуш через ntfy.sh** на твой телефон.
 - Запускается по расписанию через **GitHub Actions** (cron каждые 15 минут),
-  независимо от Claude. Состояние для защиты от повторных писем хранится в кэше Actions.
+  независимо от Claude. Состояние для защиты от повторных пушей хранится в кэше Actions.
 
 > Почему не MCP и не «навык» Claude? MCP — это постоянный сервер инструментов
 > (overkill для одной проверки), а навык работает только пока открыта сессия Claude.
@@ -20,7 +20,16 @@
 
 ## Настройка
 
-### 1. Секреты репозитория
+### 1. Пуш на телефон (ntfy.sh) — без регистрации
+
+1. Установи приложение **ntfy** ([Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy) /
+   [iOS](https://apps.apple.com/app/ntfy/id1625396347)).
+2. Придумай **секретную тему** (topic) — это просто длинная случайная строка, например
+   `ipk-torrent-24h-9f3k2p7q`. Кто знает имя темы — видит сообщения, поэтому делай его
+   непредсказуемым.
+3. В приложении нажми **+** и подпишись на эту тему (сервер `ntfy.sh`).
+
+### 2. Секреты репозитория
 
 `Settings → Secrets and variables → Actions → New repository secret`:
 
@@ -28,21 +37,17 @@
 | --- | --- |
 | `IPK_USER` | Email/логин аккаунта InterParking |
 | `IPK_PASS` | Пароль аккаунта InterParking |
-| `SMTP_HOST` | SMTP-сервер (напр. `smtp.gmail.com`) |
-| `SMTP_PORT` | Порт SMTP (`587` STARTTLS или `465` SSL) |
-| `SMTP_USER` | Логин SMTP |
-| `SMTP_PASS` | Пароль SMTP (для Gmail — **App Password**, не обычный пароль) |
-| `EMAIL_TO` | Куда слать уведомление |
-| `EMAIL_FROM` | (необязательно) адрес отправителя, по умолчанию = `SMTP_USER` |
+| `NTFY_TOPIC` | Та самая секретная тема ntfy (напр. `ipk-torrent-24h-9f3k2p7q`) |
 
-Опционально через `Variables` (не секреты) можно переопределить признаки детекции:
+Опционально через `Variables` (не секреты):
 
 | Переменная | По умолчанию | Назначение |
 | --- | --- | --- |
+| `NTFY_SERVER` | `https://ntfy.sh` | свой сервер ntfy (если self-hosted) |
 | `PARKING_MATCH` | `torrent` | подстрока названия паркинга |
-| `ABONO_MATCH` | `24` | подстрока продукта/абонемента |
+| `ABONO_PRODUCT_RE` | `abono\s*24h` | регэксп продукта-абонемента |
 
-### 2. Проверка
+### 3. Проверка
 
 - Вручную: вкладка **Actions → «Проверка абонемента 24h (Торрент)» → Run workflow**.
 - Автоматически: cron `*/15 * * * *` (можно изменить в
@@ -57,8 +62,8 @@
 3. В фильтре паркинга `select#CarParks` выбирается **«Torrent - Avenida País Valencià»**
    и применяется.
 4. Среди продуктов Торрента ищется строка **«Abono 24h L-D»** (78,75€).
-   - Если она помечена **«Agotado»** → нет в наличии (письмо не шлётся).
-   - Если «Agotado» пропал (появилась кнопка «Contratar») → **доступно**, шлётся email.
+   - Если она помечена **«Agotado»** → нет в наличии (пуш не шлётся).
+   - Если «Agotado» пропал (появилась кнопка «Contratar») → **доступно**, шлётся пуш.
 
 Тонкую настройку при необходимости можно переопределить переменной (Variables):
 `ABONO_PRODUCT_RE` (регэксп продукта, по умолчанию `abono\s*24h`),
@@ -74,9 +79,13 @@
 npm install
 npx playwright install chromium
 IPK_USER='...' IPK_PASS='...' \
-SMTP_HOST='smtp.gmail.com' SMTP_PORT='587' SMTP_USER='...' SMTP_PASS='...' \
-EMAIL_TO='you@example.com' HEADLESS=false \
+NTFY_TOPIC='ipk-torrent-24h-9f3k2p7q' HEADLESS=false \
 npm run check
+```
+
+Проверить, что пуш доходит (без всей проверки):
+```bash
+curl -d "тест пуша" ntfy.sh/ipk-torrent-24h-9f3k2p7q
 ```
 
 ## Примечания

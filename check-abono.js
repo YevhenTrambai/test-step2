@@ -122,35 +122,26 @@ async function login(page) {
     log('ВНИМАНИЕ: на странице входа обнаружена captcha — автоматический вход может не пройти.');
   }
 
-  // Если поле email не появилось — печатаем диагностику и выходим.
-  const emailProbe = page
-    .locator('input[type="email"], input[name*="mail" i], input[name*="user" i], input[id*="user" i]')
-    .first();
-  if (!(await emailProbe.count().catch(() => 0)) ||
-      !(await emailProbe.isVisible().catch(() => false))) {
+  // Форма входа P-web: поля id="Login" (E-mail) и id="Password".
+  // На странице есть дублирующиеся (скрытые) копии полей для адаптивной вёрстки,
+  // поэтому берём именно ВИДИМОЕ поле.
+  const email = page.locator('input#Login:visible, input[name="Login"]:visible').first();
+  const pass = page.locator('input#Password:visible, input[name="Password"]:visible').first();
+
+  if (!(await email.count().catch(() => 0)) ||
+      !(await email.isVisible().catch(() => false))) {
     await dumpDiagnostics(page, 'login');
-    throw new Error('Поле email на странице входа не найдено — нужно поправить селекторы (см. диагностику выше).');
+    throw new Error('Поле логина (#Login) не найдено — разметка входа изменилась (см. диагностику выше).');
   }
 
-  // Поля логина. Селекторы устойчивые: ищем по типу/имени/placeholder.
-  const email = page
-    .locator('input[type="email"], input[name*="mail" i], input[name*="user" i], input[id*="user" i]')
-    .first();
-  const pass = page
-    .locator('input[type="password"], input[name*="pass" i], input[id*="pass" i]')
-    .first();
-
-  await email.waitFor({ state: 'visible', timeout: 30000 });
   await email.fill(requireEnv('IPK_USER'));
   await pass.fill(requireEnv('IPK_PASS'));
 
-  // Кнопка отправки формы.
-  const submit = page
-    .locator('button[type="submit"], input[type="submit"], button:has-text("Iniciar"), button:has-text("Acceder"), button:has-text("Entrar")')
-    .first();
+  // Отправка формы: кнопка «Acceso» в той же форме; на всякий случай — submit формы.
+  const submit = page.locator('form:has(input#Password) button:has-text("Acceso"), form:has(input#Password) button[type="submit"], button:has-text("Acceso")').first();
   await Promise.all([
     page.waitForLoadState('networkidle').catch(() => {}),
-    submit.click(),
+    submit.click().catch(() => pass.press('Enter')),
   ]);
 
   // Проверяем, что ушли со страницы логина.
@@ -191,6 +182,15 @@ async function checkAvailability(page) {
   }
 
   const bodyText = (await page.locator('body').innerText()).toLowerCase();
+
+  // Диагностика страницы абонементов в лог (для настройки детекции).
+  log('ABONO URL:', page.url());
+  log('ABONO TITLE:', await page.title());
+  log('ABONO BODY (2000):', bodyText.replace(/\s+/g, ' ').slice(0, 2000));
+  const links = await page.$$eval('a', (els) =>
+    els.map((e) => (e.innerText || '').trim()).filter(Boolean).slice(0, 40)
+  ).catch(() => []);
+  log('ABONO LINKS:', JSON.stringify(links));
 
   const mentionsParking = bodyText.includes(PARKING_MATCH);
   const mentionsAbono = bodyText.includes(ABONO_MATCH);

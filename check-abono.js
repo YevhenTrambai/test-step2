@@ -249,21 +249,22 @@ async function checkAvailability(page) {
   ).catch(() => []);
   log('TORRENT ROWS:', JSON.stringify(rows));
 
-  const bodyText = (await page.locator('body').innerText()).toLowerCase();
-  log('ABONO BODY (2500):', bodyText.replace(/\s+/g, ' ').slice(0, 2500));
+  // 4) Детекция: в отфильтрованном по Торренту виде ищем строку продукта
+  // «Abono 24h» и смотрим её статус. Продукт доступен, если строка найдена
+  // и НЕ помечена «Agotado» (тогда вместо неё будет кнопка «Contratar»).
+  const PRODUCT_RE = new RegExp(process.env.ABONO_PRODUCT_RE || 'abono\\s*24h', 'i');
+  const row24 = rows.find((r) => PRODUCT_RE.test(r.t));
+  const rowText = row24 ? row24.t : '';
+  const rowBtns = row24 ? row24.btns.join(' ') : '';
+  const isAgotado = /agotado/i.test(rowText) || /agotado/i.test(rowBtns);
+  const canContract = /contratar|comprar|alta|disponible|a[ñn]adir/i.test(`${rowText} ${rowBtns}`);
 
-  // 4) Детекция (эвристика, привязанная к отфильтрованному виду Торрента).
-  const mentionsParking = bodyText.includes(PARKING_MATCH);
-  const mentionsAbono = bodyText.includes(ABONO_MATCH);
-  const soldOutSignals = [
-    'no hay', 'agotado', 'sin disponibilidad', 'no disponible',
-    'lista de espera', 'completo', 'no existen', 'no se han encontrado',
-  ];
-  const looksSoldOut = soldOutSignals.some((s) => bodyText.includes(s));
-  const available = filtered && mentionsParking && mentionsAbono && !looksSoldOut;
+  // Доступно только если фильтр применён, строка 24h найдена и не «Agotado».
+  const available = filtered && !!row24 && !isAgotado;
 
-  const detail = `filtered=${filtered}, parking("${PARKING_MATCH}")=${mentionsParking}, ` +
-    `abono("${ABONO_MATCH}")=${mentionsAbono}, soldOut=${looksSoldOut}`;
+  const detail =
+    `filtered=${filtered}, found24h=${!!row24}, agotado=${isAgotado}, contratar=${canContract}` +
+    (row24 ? ` | "${rowText.slice(0, 120)}"` : '');
   log('Результат детекции:', detail);
   return { available, detail };
 }
@@ -286,13 +287,14 @@ async function sendEmail(subjectAvailable, detail) {
     from,
     to,
     subject: subjectAvailable
-      ? '✅ Абонемент 24h в Торренте ДОСТУПЕН — оформляй!'
-      : 'ℹ️ Абонемент 24h в Торренте — статус проверки',
+      ? '✅ Abono 24h L-D (Торрент) ДОСТУПЕН — оформляй!'
+      : 'ℹ️ Abono 24h L-D (Торрент) — статус проверки',
     text:
-      `Проверка ${ABONO_URL}\n\n` +
       (subjectAvailable
-        ? 'Похоже, абонемент 24h в паркинге Торрент стал доступен для оформления.\n'
+        ? 'Продукт «Abono 24h L-D» в паркинге Torrent - Avenida País Valencià больше НЕ помечен «Agotado» — вероятно, доступен для оформления.\n'
         : 'Текущий статус ниже.\n') +
+      `\nОформить/проверить: ${ABONO_URL}\n` +
+      `(в фильтре выбери «Torrent - Avenida País Valencià», продукт «Abono 24h L-D»)\n` +
       `\nДетали детекции: ${detail}\n` +
       `Время: ${new Date().toISOString()}\n`,
   });

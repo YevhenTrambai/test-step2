@@ -58,9 +58,36 @@ function writeState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
+async function dismissCookieBanner(page) {
+  // Лучшая попытка закрыть баннер согласия cookie (не критично, если его нет).
+  const btn = page
+    .locator('button:has-text("Aceptar"), button:has-text("Acepto"), button:has-text("Accept"), #onetrust-accept-btn-handler, button:has-text("De acuerdo")')
+    .first();
+  if (await btn.count().catch(() => 0)) {
+    await btn.click({ timeout: 3000 }).catch(() => {});
+  }
+}
+
+async function detectCaptcha(page) {
+  return page.evaluate(() => {
+    const html = document.documentElement.innerHTML.toLowerCase();
+    return (
+      html.includes('recaptcha') ||
+      html.includes('hcaptcha') ||
+      html.includes('turnstile') ||
+      html.includes('cf-challenge')
+    );
+  });
+}
+
 async function login(page) {
   log('Открываю страницу входа…');
   await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+  await dismissCookieBanner(page);
+
+  if (await detectCaptcha(page)) {
+    log('ВНИМАНИЕ: на странице входа обнаружена captcha — автоматический вход может не пройти.');
+  }
 
   // Поля логина. Селекторы устойчивые: ищем по типу/имени/placeholder.
   const email = page
@@ -108,7 +135,17 @@ async function login(page) {
 async function checkAvailability(page) {
   log('Открываю страницу абонементов…');
   await page.goto(ABONO_URL, { waitUntil: 'networkidle' });
+  await dismissCookieBanner(page);
   await page.waitForTimeout(1500);
+
+  // Всегда сохраняем артефакты для отладки/уточнения селекторов в Actions.
+  try {
+    fs.mkdirSync('artifacts', { recursive: true });
+    fs.writeFileSync('artifacts/abono.html', await page.content());
+    await page.screenshot({ path: 'artifacts/abono.png', fullPage: true });
+  } catch (e) {
+    log('Не удалось сохранить артефакты:', e.message);
+  }
 
   const bodyText = (await page.locator('body').innerText()).toLowerCase();
 
@@ -162,7 +199,10 @@ async function sendEmail(subjectAvailable, detail) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: HEADLESS });
+  const browser = await chromium.launch({
+    headless: HEADLESS,
+    executablePath: process.env.PW_EXECUTABLE_PATH || undefined,
+  });
   const context = await browser.newContext({
     locale: 'es-ES',
     userAgent:

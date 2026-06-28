@@ -80,13 +80,56 @@ async function detectCaptcha(page) {
   });
 }
 
+async function dumpDiagnostics(page, tag) {
+  // Печатает структуру текущей страницы в лог — для подбора селекторов в Actions.
+  try {
+    log(`=== ДИАГНОСТИКА (${tag}) ===`);
+    log('URL:', page.url());
+    log('Title:', await page.title());
+
+    const inputs = await page.$$eval('input', (els) =>
+      els.map((e) => ({
+        type: e.type, name: e.name, id: e.id,
+        ph: e.placeholder, ac: e.autocomplete,
+        visible: !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length),
+      }))
+    );
+    log('INPUTS:', JSON.stringify(inputs));
+
+    const buttons = await page.$$eval('button, input[type=submit], a[role=button]', (els) =>
+      els.map((e) => (e.innerText || e.value || '').trim().slice(0, 40)).filter(Boolean)
+    );
+    log('BUTTONS:', JSON.stringify(buttons));
+
+    const frames = page.frames().map((f) => f.url());
+    log('FRAMES:', JSON.stringify(frames));
+
+    const body = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 800);
+    log('BODY:', body);
+    log('=== /ДИАГНОСТИКА ===');
+  } catch (e) {
+    log('Не удалось собрать диагностику:', e.message);
+  }
+}
+
 async function login(page) {
   log('Открываю страницу входа…');
-  await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(LOGIN_URL, { waitUntil: 'networkidle', timeout: 45000 });
   await dismissCookieBanner(page);
+  await page.waitForTimeout(2500); // дать SPA дорисовать форму
 
   if (await detectCaptcha(page)) {
     log('ВНИМАНИЕ: на странице входа обнаружена captcha — автоматический вход может не пройти.');
+  }
+
+  // Если поле email не появилось — печатаем диагностику и выходим.
+  const emailProbe = page
+    .locator('input[type="email"], input[name*="mail" i], input[name*="user" i], input[id*="user" i]')
+    .first();
+  if (!(await emailProbe.count().catch(() => 0)) ||
+      !(await emailProbe.isVisible().catch(() => false))) {
+    await dumpDiagnostics(page, 'login');
+    throw new Error('Поле email на странице входа не найдено — нужно поправить селекторы (см. диагностику выше).');
   }
 
   // Поля логина. Селекторы устойчивые: ищем по типу/имени/placeholder.

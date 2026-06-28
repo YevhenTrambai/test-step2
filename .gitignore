@@ -1,0 +1,10 @@
+node_modules/
+*.log
+
+# Артефакты разведки/отладки — НЕ коммитим (могут содержать данные кабинета)
+scripts/probe.js
+artifacts/
+*.png
+*.html
+auth-state.json
+.env

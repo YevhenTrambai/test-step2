@@ -1,0 +1,71 @@
+name: Проверка абонемента 24h (Торрент)
+
+on:
+  schedule:
+    # Каждые 15 минут. GitHub может задерживать запуск при высокой нагрузке.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+# Чтобы параллельные запуски не топтались по состоянию.
+concurrency:
+  group: check-abono
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Состояние для дедупликации писем хранится между запусками через cache.
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: abono-state-${{ github.run_id }}
+          restore-keys: |
+            abono-state-
+
+      - name: Run check
+        env:
+          IPK_USER: ${{ secrets.IPK_USER }}
+          IPK_PASS: ${{ secrets.IPK_PASS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          PARKING_MATCH: ${{ vars.PARKING_MATCH }}
+          ABONO_MATCH: ${{ vars.ABONO_MATCH }}
+        run: npm run check
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: abono-state-${{ github.run_id }}
+
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-${{ github.run_id }}
+          path: |
+            artifacts/
+          if-no-files-found: ignore
+          retention-days: 3

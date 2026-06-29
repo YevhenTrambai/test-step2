@@ -36,9 +36,22 @@ const PARKING_MATCH = (process.env.PARKING_MATCH || 'torrent').toLowerCase();
 const HEADLESS = process.env.HEADLESS !== 'false';
 // Сколько проверок подряд должно упасть, чтобы прислать пуш-предупреждение.
 const FAIL_THRESHOLD = Number(process.env.FAIL_THRESHOLD || 5);
+// Ежедневный отчёт: часовой пояс и час (локальный), когда его слать.
+const REPORT_TZ = process.env.REPORT_TZ || 'Europe/Madrid';
+const REPORT_HOUR = Number(process.env.REPORT_HOUR || 21);
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+// Текущие дата/час в указанном часовом поясе (через Intl, без внешних либ).
+function tzNow(tz) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', hour12: false,
+    })
+      .formatToParts(new Date())
+      .map((p) => [p.type, p.value])
+  );
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) % 24 };
 }
 function newDaily(date) {
   return { date, checks: 0, agotado: 0, available: 0, errors: 0 };
@@ -66,7 +79,8 @@ function readState() {
       lastNotifiedAt: null,
       consecutiveFailures: 0,
       failureAlertSent: false,
-      daily: newDaily(todayStr()),
+      lastReportDate: null,
+      daily: newDaily(tzNow(REPORT_TZ).date),
     };
   }
 }
@@ -385,20 +399,10 @@ async function pushDailyReport(d) {
   }
 
   const state = readState();
-  if (!state.daily) state.daily = newDaily(todayStr());
+  const loc = tzNow(REPORT_TZ); // дата/час в часовом поясе отчёта (Europe/Madrid)
+  if (!state.daily) state.daily = newDaily(loc.date);
   if (typeof state.consecutiveFailures !== 'number') state.consecutiveFailures = 0;
   log('Прошлое состояние:', JSON.stringify(state));
-
-  // Ежедневный отчёт на смене суток (UTC): шлём за завершившийся день, затем сброс.
-  const today = todayStr();
-  if (state.daily.date !== today) {
-    try {
-      await pushDailyReport(state.daily);
-      state.daily = newDaily(today);
-    } catch (e) {
-      log('Не удалось отправить ежедневный отчёт:', e.message);
-    }
-  }
 
   let browser;
   let page;
@@ -455,6 +459,18 @@ async function pushDailyReport(d) {
     }
     process.exitCode = 2;
   } finally {
+    // Ежедневный отчёт: первым прогоном на/после REPORT_HOUR по местному времени,
+    // один раз в сутки. Покрывает период с прошлого отчёта (~24ч), затем сброс.
+    if (loc.hour >= REPORT_HOUR && state.lastReportDate !== loc.date) {
+      try {
+        await pushDailyReport({ ...state.daily, date: loc.date });
+        state.lastReportDate = loc.date;
+        state.daily = newDaily(loc.date);
+      } catch (e) {
+        log('Не удалось отправить ежедневный отчёт:', e.message);
+      }
+    }
+
     // Состояние пишем ВСЕГДА (в т.ч. при сбое) — иначе счётчики не сохранятся.
     writeState(state);
     if (browser) await browser.close();

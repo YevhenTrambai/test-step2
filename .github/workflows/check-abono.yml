@@ -1,9 +1,10 @@
 name: Проверка абонемента 24h (Торрент)
 
+# МОНИТОРИНГ ОТКЛЮЧЁН 2026-06-29 (парковка куплена).
+# Чтобы снова включить: раскомментируй schedule ниже и убери "if: false" у job check.
 on:
-  schedule:
-    # Каждые 15 минут. GitHub может задерживать запуск при высокой нагрузке.
-    - cron: "*/15 * * * *"
+  # schedule:
+  #   - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       test_push:
@@ -20,6 +21,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # ОТКЛЮЧЕНО: job не выполняется даже при внешнем триггере. Убери строку, чтобы включить.
+    if: ${{ false }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
